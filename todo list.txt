@@ -1,0 +1,13 @@
+(3) 
+inference.py 작성
+
+(4)
+label_encoder, decoder 작성
+
+(5) DataAugmentation
+A.Normalize()
+ToTensor dimension 문제 해결
+
+(6) evaluate.py
+1) mIOU 추가
+2) 
