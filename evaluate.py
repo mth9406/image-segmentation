@@ -46,7 +46,7 @@ def main(config):
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
     model = torch.load(config.model_path).to(device)
-    print(summary(model, (config.in_channels, 512, 512)))
+    print(summary(model, (config.in_channels, 224, 224)))
 
     ds = ImageDataSet(config.test_path, config.in_channels)
     dl = DataLoader(ds, batch_size= config.batch_size, shuffle= False)
@@ -61,18 +61,22 @@ def main(config):
     }
 
     temp = os.path.join(config.test_path, 'masks')
+    temp2 = os.path.join(config.test_path, 'images')
     file_names = list(map(lambda x:x.replace(temp, predictions_path), ds.masks_path))
-    roi_names = list(map(lambda x:x.replace(temp, rois_path), ds.images_path))
+    roi_names = list(map(lambda x:x.replace(temp2, rois_path), ds.images_path))
+
+    print(f'Example path to a prediction file: {file_names[0]}')
+    print(f'Example path to a roi file: {roi_names[0]}')
 
     predictions = []
     rois = []
     to_prob = F.sigmoid if config.classes == 1 else F.softmax
-    num_batches = np.ceil(len(file_names)/config.batch_size)
+    num_batches = int(np.ceil(len(file_names)/config.batch_size))
     for batch_idx, (img, mask) in enumerate(dl):
 
         img, mask = img.to(device), mask.to(device) # bs, 3, h, w // bs, 1, h, w
-        h, w= img.shape[2:]
-        roi = torch.zeros((config.batch_size, config.in_channels, h, w), dtype= torch.uint8) # bs, 3, h, w
+        bs, c, h, w= img.shape
+        roi = torch.zeros((bs, config.in_channels, h, w), dtype= torch.uint8) # bs, 3, h, w
         model.eval()
         with torch.no_grad():
             predicted_mask, label = model(img)
@@ -90,18 +94,18 @@ def main(config):
             # todo
             # need color map...
 
-        print(f'[{batch_idx+1}/{num_batches}]: saving validation loss and miou...')
+        print(f'Batch [{batch_idx+1}/{num_batches}]: saving validation loss and miou...')
         valid_loss['loss'].append(loss.detach().cpu().item()) 
         mask_2 = (mask * 255.).detach().cpu().type(torch.uint8) # torch
         miou = iou_pytorch(p, mask_2).detach().cpu().item()
         valid_loss['miou'].append(miou)
 
-        print(f'[{batch_idx+1}/{num_batches}]: converting torch to images and save in {predictions_path}...')
+        print(f'Batch [{batch_idx+1}/{num_batches}]: converting torch to images and save in {predictions_path}...')
 
         roi = np.transpose(roi.numpy(), (0,2,3,1)) # bs, h, w, 3; numpy; roi
         p = np.transpose(p.numpy(), (0,2,3,1)).squeeze() # bs, h, w; numpy; prediction 
 
-        for i in range(config.batch_size):
+        for i in range(bs):
             # save roi and predictions
             idx = config.batch_size*batch_idx + i
             cv2.imwrite(file_names[idx], p[i])
@@ -115,9 +119,11 @@ def main(config):
     valid_loss['loss'] = np.mean(valid_loss['loss'])
     valid_loss['miou'] = np.mean(valid_loss['miou'])
 
-    with open('test_score.txt', 'w') as f:   
+    test_score_path = os.path.join(config.model_dir, 'test_score.txt')
+
+    with open(test_score_path, 'w') as f:   
         for k, v in valid_loss.items():
-            f.write(f'{k}:{v}')
+            f.write(f'{k}:{v}\n')
 
 if __name__ == '__main__':
     config = argparser()

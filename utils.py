@@ -29,14 +29,14 @@ class ImageDataSet(Dataset):
     
     def __getitem__(self, idx):
         if self.is_train:
-            img = cv2.imread(self.images_path[idx], cv2.IMREAD_COLOR) if self.image_channel == 3 else \
+            img = cv2.cvtColor(cv2.imread(self.images_path[idx], cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB) if self.image_channel == 3 else \
                 cv2.imread(self.images_path[idx], cv2.IMREAD_GRAYSCALE)
             mask = cv2.imread(self.masks_path[idx], cv2.IMREAD_GRAYSCALE)
 
             h, w = img.shape[:2]
-            if h != 512 or w != 512:
-                img = cv2.resize(img, (512,512), interpolation= cv2.INTER_CUBIC)
-                mask = cv2.resize(mask, (512,512), interpolation= cv2.INTER_CUBIC)
+            if h != 224 or w != 224:
+                img = cv2.resize(img, (224,224), interpolation= cv2.INTER_CUBIC)
+                mask = cv2.resize(mask, (224,224), interpolation= cv2.INTER_CUBIC)
             
             if self.transform is not None:
                 transformed = self.transform(image= img, mask= mask)
@@ -45,11 +45,11 @@ class ImageDataSet(Dataset):
                 transformed = self.convert_tensor(image= img, mask= mask)  
                 return transformed['image'], transformed['mask']     
         else:
-            img = cv2.imread(self.images_path[idx], cv2.IMREAD_COLOR) if self.image_channel == 3 else \
+            img = cv2.cvtColor(cv2.imread(self.images_path[idx], cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB) if self.image_channel == 3 else \
                 cv2.imread(self.images_path[idx], cv2.IMREAD_GRAYSCALE)
             h, w = img.shape[:2]
-            if h != 512 or w != 512:
-                img = cv2.resize(img, (512,512), interpolation= cv2.INTER_CUBIC)
+            if h != 224 or w != 224:
+                img = cv2.resize(img, (224,224), interpolation= cv2.INTER_AREA)
             transformed = self.convert_tensor(image= img)
             return transformed['image'], False
 

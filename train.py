@@ -3,6 +3,7 @@ import sys
 import pickle
 
 import segmentation_models_pytorch as smp
+from segmentation_models_pytorch.losses import FocalLoss
 import argparse
 
 import torch 
@@ -13,6 +14,7 @@ import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2, ToTensor
 
 from utils import *
+from model import *
 
 def argparser():
     p = argparse.ArgumentParser()
@@ -43,7 +45,7 @@ def argparser():
     p.add_argument('--model_path', type= str, required= False,
                 help= 'a path to a trained model if any (.pth)')
     p.add_argument('--model_type', type= int, default= 0,
-                help='0:Unet, 1:Unet++, 2:DeepLabV3+')
+                help='0:Unet, 1:Unet++, 2:DeepLabV3+, 3:UViT')
     p.add_argument('--encoder_name', type= str, default= 'resnet34',
                 help= 'choose encoder, (ex) resnet18, resnet34, resnet50 ... resnet152, xception, inceptionv4 ....\n\
                     refer to https://github.com/qubvel/segmentation_models.pytorch#encoders for the details')
@@ -148,7 +150,9 @@ def main(config):
                 in_channels= config.in_channels,
                 classes= config.classes,
                 aux_params= aux_params
-            ).to(device)       
+            ).to(device) 
+        elif config.model_type == 3:
+            model = MyViT(config.classes).to(device)      
         else:
             model= None
             print('--(!)This repo does not support the model yet...')
@@ -157,12 +161,13 @@ def main(config):
     else:
         model = torch.load(config.model_path).to(device)
 
-    print(summary(model, (config.in_channels, 512, 512)))
+    print(summary(model, (config.in_channels, 224, 224)))
     print(f'device: {device}')
     # training
     optimizer = torch.optim.Adam(model.parameters(), config.lr)
-    criterion = nn.CrossEntropyLoss() if config.classes > 1 else nn.BCEWithLogitsLoss() # reduction= mean
-
+    # criterion = nn.CrossEntropyLoss() if config.classes > 1 else nn.BCEWithLogitsLoss() # reduction= mean
+    criterion = FocalLoss(mode= 'binary') if config.classes == 1 else FocalLoss(mode= 'multiclass')
+    
     early_stopping = EarlyStopping(
         patience= config.patience,
         verbose= True,
@@ -175,6 +180,7 @@ def main(config):
         'tr_loss':[],
         'valid_loss':[]
     }
+    num_batches = len(train_dl)
     print('Start training...')
     for epoch in range(config.max_epoches):
         # to store losses per epoch
@@ -200,7 +206,7 @@ def main(config):
             tr_loss += loss.detach().cpu().item()
 
             if (batch_idx+1) % config.print_log_option == 0:
-                print(f'Epoch [{epoch+1}/{config.max_epoches}] Batch [{batch_idx+1}/{config.batch_size}]: \
+                print(f'Epoch [{epoch+1}/{config.max_epoches}] Batch [{batch_idx+1}/{num_batches}]: \
                     loss = {loss.detach().cpu().item()}')
 
         # a validation loop 
