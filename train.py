@@ -221,7 +221,7 @@ def main(config):
             valid_loss += loss.detach().cpu().item()
         
         # save current loss values
-        tr_loss, valid_loss = tr_loss/config.batch_size, valid_loss/config.batch_size
+        tr_loss, valid_loss = tr_loss/len(train_dl), valid_loss/len(valid_dl)
         logs['tr_loss'].append(tr_loss)
         logs['valid_loss'].append(valid_loss)
 

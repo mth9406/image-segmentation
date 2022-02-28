@@ -37,8 +37,9 @@ class MyViT(nn.Module):
         self.vit_layers = list(backbone[1].modules())[1]
         # self.layer_norm = backbone[2]
         # self.vit_pooler = backbone[3]
+        # self.conv2ds = [nn.Conv2d(emb_size, emb_size//12, 3, padding=1) for _ in range(12)]
         self.upsample = nn.Sequential(
-                    nn.Conv2d(emb_size*12, emb_size, 3, padding= 1, groups= emb_size),
+                    nn.Conv2d(emb_size*12, emb_size, 3, padding= 1, groups= 12),
                     UpSample(emb_size, emb_size//4),
                     nn.ReLU(inplace= True),
                     UpSample(emb_size//4, emb_size//16),
@@ -64,7 +65,9 @@ class MyViT(nn.Module):
         for vit_layer in self.vit_layers:
             x = vit_layer(x)[0]
             outs.append(self._patchify(x, self.num_patches))
-        outs = torch.cat(outs, dim= 1) # b, 768*12 14 14
+        # for i, out in enumerate(outs):
+        #     outs[i] = self.conv2ds[i](out) # b, 64, 14, 14
+        outs = torch.cat(outs, dim= 1) # b 768*12 14 14 
         outs = self.upsample(outs)
         return outs, None
 
@@ -74,3 +77,9 @@ class MyViT(nn.Module):
         patches = rearrange(patches, 'b (s1 s2) e -> b e s1 s2', s1= num_patches, s2= num_patches)
         # b 768 14 14
         return patches
+
+input = torch.randn(1, 3, 224, 224)
+vit = MyViT(1)
+output, _ = vit(input)
+
+print(output.shape)
