@@ -9,6 +9,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch import nn
+from segmentation_models_pytorch.losses import FocalLoss
 
 from utils import *
 
@@ -51,7 +52,7 @@ def main(config):
     ds = ImageDataSet(config.test_path, config.in_channels)
     dl = DataLoader(ds, batch_size= config.batch_size, shuffle= False)
 
-    criterion = nn.CrossEntropyLoss() if config.classes > 1 else nn.BCEWithLogitsLoss()
+    criterion = FocalLoss(mode= 'binary') if config.classes == 1 else FocalLoss(mode= 'multiclass')
 
     print('making predictions ...')
     # a validation loop 
@@ -109,6 +110,7 @@ def main(config):
             # save roi and predictions
             idx = config.batch_size*batch_idx + i
             cv2.imwrite(file_names[idx], p[i])
+            roi[i] = cv2.cvtColor(roi[i], cv2.COLOR_RGB2BGR)
             cv2.imwrite(roi_names[idx], roi[i])
 
         # predictions.append(p)

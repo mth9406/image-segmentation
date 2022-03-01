@@ -82,7 +82,7 @@ class EarlyStopping(object):
         elif val_loss > self.best_score + self.delta:
             self.counter += 1
             print(f'Early stopping counter {self.counter}/{self.patience}')
-            if self.counter > self.patience:
+            if self.counter >= self.patience:
                 self.early_stop = True
         else:
             self.best_score = val_loss

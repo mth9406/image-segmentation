@@ -225,7 +225,7 @@ def main(config):
         logs['tr_loss'].append(tr_loss)
         logs['valid_loss'].append(valid_loss)
 
-        print(f'Epoch [{epoch+1}/{config.max_epoches}]: training loss= {tr_loss:.6f}, validation loss= {valid_loss:.4f}')
+        print(f'Epoch [{epoch+1}/{config.max_epoches}]: training loss= {tr_loss:.6f}, validation loss= {valid_loss:.6f}')
         early_stopping(valid_loss, model)
 
         if early_stopping.early_stop:
