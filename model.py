@@ -1,28 +1,12 @@
 import torch
+from torch import Tensor
 from torch import nn
 import torch.nn.functional as F
 from transformers import ViTFeatureExtractor, ViTModel
-from PIL import Image
-import requests
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange, Reduce
+from modules import *
 
-class UpSample(nn.Sequential):
-    
-    def __init__(self, 
-                 in_channels,
-                 out_channels,
-                 groups 
-                ):
-        super().__init__(
-            nn.ConvTranspose2d(in_channels, out_channels, 2, 2, groups= groups, bias= False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels//2, 1, bias= False),
-            nn.BatchNorm2d(out_channels//2),
-            nn.ReLU(inplace=True)
-        )
-        
 class MyViT(nn.Module):
 
     def __init__(self, 
@@ -96,7 +80,13 @@ class MyViT(nn.Module):
         # b 768 14 14
         return patches
 
-x = torch.randn(1, 3, 224, 224)
-vit = MyViT(1)
-out, _ = vit(x)
-print(out.shape)
+class UPyramidVisionTransformer(nn.Module):
+    
+    def __init__(self, ):
+
+        backbone = PyramidVisionTransformer()
+        # default model outputs.
+        # b, 64, 14, 14
+        # b, 128, 7, 7
+        # b, 256, 3, 3
+        # b, 512, 1, 1
