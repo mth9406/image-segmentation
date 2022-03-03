@@ -115,7 +115,7 @@ class UPyramidVisionTransformer(nn.Module):
         self.up4 = ConvTrans2dBlock(32, 16)
         self.decode = nn.Sequential(
             nn.Conv2d(16, 8, 3, padding= 1), 
-            nn.Conv2d(8, self.num_classes, 1, padding= 1)
+            nn.Conv2d(8, self.num_classes, 1)
         )
          
     def forward(self, x):
@@ -128,9 +128,9 @@ class UPyramidVisionTransformer(nn.Module):
             outs[i+1] = fc(outs[i+1])
         outs = self.up4(outs[3]) 
         outs = self.decode(outs)
-        return outs
+        return outs, None
 
-# x = torch.randn(1, 3, 224, 224)
-# upvit = UPyramidVisionTransformer(1)
-# out = upvit(x)
-# print(out.shape)
+x = torch.randn(1, 3, 224, 224)
+upvit = UPyramidVisionTransformer(1)
+out, _ = upvit(x)
+print(out.shape)

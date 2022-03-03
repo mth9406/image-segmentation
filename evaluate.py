@@ -47,7 +47,7 @@ def main(config):
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
     model = torch.load(config.model_path).to(device)
-    print(summary(model, (config.in_channels, 224, 224)))
+    # print(summary(model, (config.in_channels, 224, 224)))
 
     ds = ImageDataSet(config.test_path, config.in_channels)
     dl = DataLoader(ds, batch_size= config.batch_size, shuffle= False)

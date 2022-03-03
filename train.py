@@ -163,7 +163,7 @@ def main(config):
     else:
         model = torch.load(config.model_path).to(device)
 
-    print(summary(model, (config.in_channels, 224, 224)))
+    # print(summary(model, (config.in_channels, 224, 224)))
     print(f'device: {device}')
     # training
     optimizer = torch.optim.Adam(model.parameters(), config.lr)
