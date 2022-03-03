@@ -82,11 +82,55 @@ class MyViT(nn.Module):
 
 class UPyramidVisionTransformer(nn.Module):
     
-    def __init__(self, ):
-
-        backbone = PyramidVisionTransformer()
+    def __init__(self, num_classes, img_size= 224, **config):
+        
+        super().__init__()
+        self.num_classes = num_classes
+        self.img_size = img_size
+        
+        # Encoder
+        self.backbone = PyramidVisionTransformer(img_size= img_size, 
+                                                 patch_size= 2,
+                                                 embed_dims= [32, 64, 128, 256],
+                                                 **config)
         # default model outputs.
         # b, 64, 14, 14
         # b, 128, 7, 7
         # b, 256, 3, 3
         # b, 512, 1, 1
+
+        # when patch_size = 2,
+        # embed_dim = [32, 64, 128, 256] 
+        # b, 32, 112, 112
+        # b, 64, 56, 56
+        # b, 128, 28, 28
+        # b, 256, 14, 14
+
+        # Decoder
+        for i in range(8,5,-1):
+            up = ConvTrans2dBlock(2**i, 2**(i-1))
+            fc = nn.Conv2d(2**i, 2**(i-1),1, groups= 2)
+            setattr(self, f"up{9-i}", up)
+            setattr(self, f"fc{9-i}", fc)
+        self.up4 = ConvTrans2dBlock(32, 16)
+        self.decode = nn.Sequential(
+            nn.Conv2d(16, 8, 3, padding= 1), 
+            nn.Conv2d(8, self.num_classes, 1, padding= 1)
+        )
+         
+    def forward(self, x):
+        outs = self.backbone(x)
+        outs.reverse()
+        for i in range(3):
+            up, fc = getattr(self, f"up{i+1}"), getattr(self, f"fc{i+1}")
+            outs[i] = up(outs[i])
+            outs[i+1] = torch.cat([outs[i+1], outs[i]], dim=1)
+            outs[i+1] = fc(outs[i+1])
+        outs = self.up4(outs[3]) 
+        outs = self.decode(outs)
+        return outs
+
+# x = torch.randn(1, 3, 224, 224)
+# upvit = UPyramidVisionTransformer(1)
+# out = upvit(x)
+# print(out.shape)

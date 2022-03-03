@@ -19,6 +19,17 @@ class UpSample(nn.Sequential):
             nn.ReLU(inplace=True)
         )
 
+class ConvTrans2dBlock(nn.Sequential):
+
+    def __init__(self, in_channels,
+                       out_channels):
+        super().__init__(
+            nn.ConvTranspose2d(in_channels, out_channels, 2, 2, bias= False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace= True)
+        ) 
+                
+
 class Mlp(nn.Module):
     def __init__(self, in_features:int, 
                         hidden_features=None, 
@@ -189,13 +200,11 @@ class PyramidVisionTransformer(nn.Module):
                  norm_layer= nn.LayerNorm, 
                  depths= [3, 4, 6, 3],
                  sr_ratios= [8, 4, 2, 1], 
-                 num_stages= 4,
-                 F4= False
+                 num_stages= 4
                 ):
         super().__init__()
         self.num_classes = num_classes
         self.depths = depths # the number of encoder blocks per transformer layer = [3, 4, 6, 3]
-        self.F4 = F4
         self.num_stages = num_stages # the number of transformer layers = 4
         
         for i in range(num_stages):
