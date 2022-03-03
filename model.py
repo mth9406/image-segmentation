@@ -91,7 +91,7 @@ class UPyramidVisionTransformer(nn.Module):
         # Encoder
         self.backbone = PyramidVisionTransformer(img_size= img_size, 
                                                  patch_size= 2,
-                                                 embed_dims= [32, 64, 128, 256],
+                                                 embed_dims= [64, 128, 256, 512],
                                                  **config)
         # default model outputs.
         # b, 64, 14, 14
@@ -107,15 +107,17 @@ class UPyramidVisionTransformer(nn.Module):
         # b, 256, 14, 14
 
         # Decoder
-        for i in range(8,5,-1):
+        for i in range(9,6,-1):
             up = ConvTrans2dBlock(2**i, 2**(i-1))
             fc = nn.Conv2d(2**i, 2**(i-1),1, groups= 2)
-            setattr(self, f"up{9-i}", up)
-            setattr(self, f"fc{9-i}", fc)
-        self.up4 = ConvTrans2dBlock(32, 16)
+            setattr(self, f"up{10-i}", up)
+            setattr(self, f"fc{10-i}", fc)
+        self.up4 = ConvTrans2dBlock(64, 32)
         self.decode = nn.Sequential(
-            nn.Conv2d(16, 8, 3, padding= 1), 
-            nn.Conv2d(8, self.num_classes, 1)
+            nn.Conv2d(32, 16, 3, padding= 1), 
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace= True),
+            nn.Conv2d(16, self.num_classes, 1)
         )
          
     def forward(self, x):

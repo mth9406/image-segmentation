@@ -242,7 +242,7 @@ class PyramidVisionTransformer(nn.Module):
         else:
             return F.interpolate(
                 pos_embed.reshape(1, patch_embed.H, patch_embed.W, -1).permute(0, 3, 1, 2),
-                size=(H, W), mode="bilinear").reshape(1, -1, H * W).permute(0, 2, 1)            
+                size=(H, W), mode="bilinear", align_corners=True).reshape(1, -1, H * W).permute(0, 2, 1)            
     
     def forward(self, x):
         outs = []
