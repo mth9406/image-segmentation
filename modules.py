@@ -13,10 +13,10 @@ class UpSample(nn.Sequential):
         super().__init__(
             nn.ConvTranspose2d(in_channels, out_channels, 2, 2, groups= groups, bias= False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Conv2d(out_channels, out_channels//2, 1, bias= False),
             nn.BatchNorm2d(out_channels//2),
-            nn.ReLU(inplace=True)
+            nn.ReLU()
         )
 
 class ConvTrans2dBlock(nn.Sequential):
@@ -26,7 +26,7 @@ class ConvTrans2dBlock(nn.Sequential):
         super().__init__(
             nn.ConvTranspose2d(in_channels, out_channels, 2, 2, bias= False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace= True)
+            nn.ReLU()
         ) 
                 
 
@@ -265,4 +265,3 @@ class PyramidVisionTransformer(nn.Module):
             outs.append(x)
         
         return outs
-        

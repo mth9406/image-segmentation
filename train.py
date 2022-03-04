@@ -45,7 +45,7 @@ def argparser():
     p.add_argument('--model_path', type= str, required= False,
                 help= 'a path to a trained model if any (.pth)')
     p.add_argument('--model_type', type= int, default= 0,
-                help='0:Unet, 1:Unet++, 2:DeepLabV3+, 3:UViT, 4:UPViT')
+                help='0:Unet, 1:Unet++, 2:DeepLabV3+, 3:UViT, 4:UPViT, 5:ViTV3')
     p.add_argument('--encoder_name', type= str, default= 'resnet34',
                 help= 'choose encoder, (ex) resnet18, resnet34, resnet50 ... resnet152, xception, inceptionv4 ....\n\
                     refer to https://github.com/qubvel/segmentation_models.pytorch#encoders for the details')
@@ -155,6 +155,8 @@ def main(config):
             model = MyViT(config.classes).to(device)    
         elif config.model_type == 4:
             model = UPyramidVisionTransformer(num_classes= config.classes).to(device)
+        elif config.model_type == 5:
+            model = ViTV3(config.classes).to(device)
         else:
             model= None
             print('--(!)This repo does not support the model yet...')
