@@ -1,3 +1,4 @@
+from unittest.mock import patch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -265,3 +266,74 @@ class PyramidVisionTransformer(nn.Module):
             outs.append(x)
         
         return outs
+
+class DepthwiseSeparableConv2d(nn.Module):
+
+    def __init__(self, in_chans, out_chans, kernel_size, padding, dilation_rate):
+        super().__init__()
+        self.f = nn.Sequential(
+            nn.Conv2d(in_chans, in_chans, kernel_size, 1, 
+                        padding, dilation_rate, groups= in_chans),
+            nn.BatchNorm2d(in_chans),
+            nn.ReLU(),
+            nn.Conv2d(in_chans, out_chans, 1, 1),
+            nn.BatchNorm2d(out_chans),
+            nn.ReLU()
+        )
+        self.mapping = nn.Conv2d(in_chans, out_chans, 1)
+
+    def forward(self, x):
+        fx = self.f(x)
+        x = F.relu(fx+self.mapping(x), inplace=True)
+        return x
+
+
+class ASPP(nn.Module):
+
+    def __init__(self, emb_size= 768, branch_emb_size = 768//8,
+                       dilation_rates= [6, 12, 24]
+                ):
+        super().__init__()
+
+        # (1) 1x1 conv 
+        self.branch1 = DepthwiseSeparableConv2d(emb_size, branch_emb_size, 1, 0, 1)
+    
+        # (2) 3x3 conv rate: 6,  padding: 6
+        self.branch2 = DepthwiseSeparableConv2d(emb_size, branch_emb_size, 3, dilation_rates[0], dilation_rates[0])
+
+        # (3) 3x3 conv rate: 12, padding: 12
+        self.branch3 =  DepthwiseSeparableConv2d(emb_size, branch_emb_size, 3, dilation_rates[1], dilation_rates[1])
+
+        # (4) 3x3 conv rate: 18, padding: 18
+        self.branch4 =  DepthwiseSeparableConv2d(emb_size, branch_emb_size, 3, dilation_rates[2], dilation_rates[2])
+
+        # (5) Image pooling: AdaptivePoold2d + 1x1 conv
+        self.branch5 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(emb_size, branch_emb_size, 1),
+            nn.BatchNorm2d(branch_emb_size),
+            nn.ReLU()
+        )
+        
+        self.emb_size = emb_size
+        self.branch_size = branch_emb_size
+        self.dilation_rates = dilation_rates
+    
+    def forward(self, x):
+        B, C, H, W = x.shape
+        outs = []
+        for i in range(1, 6):
+            branch = getattr(self, f"branch{i}")
+            outs.append(branch(x))
+        outs[4] = F.upsample(outs[4], size= (H, W),
+                                mode= 'bilinear', align_corners=True)
+        return outs
+
+
+# if __name__ == '__main__':
+    # x = torch.randn(1,64,14,14)
+    # aspp = ASPP(emb_size = 64, branch_emb_size= 8)
+    # aspp.eval()
+    # out = aspp(x)
+    # for ot in out:
+    #     print(ot.shape)
