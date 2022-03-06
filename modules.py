@@ -12,11 +12,11 @@ class UpSample(nn.Sequential):
                  groups 
                 ):
         super().__init__(
-            nn.ConvTranspose2d(in_channels, out_channels, 2, 2, groups= groups, bias= False),
-            nn.BatchNorm2d(out_channels),
+            nn.ConvTranspose2d(in_channels, in_channels, 2, 2, groups= groups, bias= False),
+            nn.BatchNorm2d(in_channels),
             nn.ReLU(),
-            nn.Conv2d(out_channels, out_channels//2, 1, bias= False),
-            nn.BatchNorm2d(out_channels//2),
+            nn.Conv2d(in_channels, out_channels, 1, bias= False),
+            nn.BatchNorm2d(out_channels),
             nn.ReLU()
         )
 
