@@ -6,6 +6,7 @@ from transformers import ViTFeatureExtractor, ViTModel
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange, Reduce
 from modules import *
+from torchvision import models
 
 class MyViT(nn.Module):
 
@@ -197,15 +198,161 @@ class ViTV3(nn.Module):
         x = self.decode(x)
         return x, None
 
-    # def _patchify(self, x, num_patches):
-    #     cls_token, patches = torch.split(x, [1, num_patches**2], dim= 1)
-    #     patches = rearrange(patches, 'b (s1 s2) e -> b e s1 s2', s1= num_patches, s2= num_patches)
-    #     # b 768 14 14
-    #     return patches
+# U-net using Resnet as a backbone network   
+class ResUNet(nn.Module):
 
-# if __name__ == '__main__':
-#     x = torch.randn(2, 3, 224, 224)
-#     vitv3 = ViTV3(1)
-#     vitv3.eval()
-#     out, _ = vitv3(x)
-#     print(out.shape)
+    def __init__(self, in_channels, out_channels, img_size= 224):
+        super(ResUNet, self).__init__()
+        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.backbone = models.resnet34(pretrained= True)
+        self.base_layers = list(self.backbone.children())
+
+        # encoder layer (resnet)
+        # assume input image batch's shape = bs, 3, 224, 224
+        self.enc0 = nn.Sequential(*self.base_layers[:3]) 
+        self.enc1 = nn.Sequential(*self.base_layers[3:5])
+        self.enc2 = nn.Sequential(*self.base_layers[5])
+        self.enc3 = nn.Sequential(*self.base_layers[6])
+        self.enc4 = nn.Sequential(*self.base_layers[7])
+
+        # decoder layer
+        # up-sample
+        self.up1 = UpSample(512, 512, 512) 
+        # concat up1 and enc3: bs, 256+256, 32, 32
+        self.conv1 = DoubleConvResidBlock(256+256, 256) 
+        
+        self.up2 = UpSample(256, 256, 256) 
+        # concat up2 and enc2: bs, 128+128, 64, 64
+        self.conv2 = DoubleConvResidBlock(128+128, 128)
+        
+        self.up3 = UpSample(128, 128, 128) # bs, 64, 128, 128
+        # concat up3 and enc1: bs, 64+64, 128, 128
+        self.conv3 = DoubleConvResidBlock(64+64, 64) 
+
+        self.up4 = UpSample(64, 64, 64) 
+        # concat up4 and enc0: bs, 64+64, 128, 128
+        self.conv4 = DoubleConvResidBlock(64+32, 64)
+
+        self.decode = nn.Sequential(
+            nn.ConvTranspose2d(64, 32, 2, 2), 
+            nn.Conv2d(32, out_channels, 1)
+        )
+        
+    def forward(self, x):
+        # encoder
+        c1 = self.enc0(x) 
+        c2 = self.enc1(c1)
+        c3 = self.enc2(c2)
+        c4 = self.enc3(c3)
+        c5 = self.enc4(c4)
+
+        # decoder 
+        u1 = self.up1(c5)
+        cat1 = torch.cat([u1, c4], dim= 1)
+        uc1 = self.conv1(cat1)  
+
+        u2 = self.up2(uc1)
+        cat2 = torch.cat([u2, c3], dim= 1)
+        uc2 = self.conv2(cat2) 
+
+        u3 = self.up3(uc2)
+        cat3 = torch.cat([u3, c2], dim= 1)
+        uc3 = self.conv3(cat3) 
+
+        u4 = self.up4(uc3)
+        cat4 = torch.cat([u4, c1], dim= 1)
+        uc4 = self.conv4(cat4) 
+
+        # return decoder
+        out = self.decode(uc4)
+        
+        return out, None
+
+
+# U-net using Resnet as a backbone network   
+class NestedResUNet(nn.Module):
+
+    def __init__(self, in_channels, out_channels, img_size= 224):
+        super(NestedResUNet, self).__init__()
+        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.backbone = models.resnet34(pretrained= True)
+        self.base_layers = list(self.backbone.children())
+
+        # encoder layer (resnet)
+        # assume input image batch's shape = bs, 3, 224, 224
+        self.enc0 = nn.Sequential(*self.base_layers[:3]) 
+        self.enc1 = nn.Sequential(*self.base_layers[3:5])
+        self.enc2 = nn.Sequential(*self.base_layers[5])
+        self.enc3 = nn.Sequential(*self.base_layers[6])
+        self.enc4 = nn.Sequential(*self.base_layers[7])
+
+        # decoder layer
+        # up-sample
+        self.up1 = UpSample(512, 512, 512) 
+        # concat up1 and enc3: bs, 256+256, 32, 32
+        self.conv1 = DoubleLightConvResidBlock(256+256, 256, 3, 1, 1, 1) 
+        
+        self.up2 = UpSample(256, 256, 256) 
+        # concat up2 and enc2: bs, 128+128, 64, 64
+        self.conv2 = DoubleLightConvResidBlock(128+128, 128, 3, 1, 1, 1) 
+        
+        self.up3 = UpSample(128, 128, 128) # bs, 64, 128, 128
+        # concat up3 and enc1: bs, 64+64, 128, 128
+        self.conv3 = DoubleLightConvResidBlock(64+64+128, 64, 3, 1, 1, 1)  
+
+        self.up4 = UpSample(64, 64, 64) 
+        # concat up4 and enc0: bs, 64+64, 128, 128
+        self.conv4 = DoubleLightConvResidBlock(64+32+64, 64, 3, 1, 1, 1) 
+
+        self.decode = nn.Sequential(
+            nn.ConvTranspose2d(64, 32, 2, 2), 
+            nn.Conv2d(32, out_channels, 1)
+        )
+        
+    def forward(self, x):
+        # encoder
+        c1 = self.enc0(x) 
+        c2 = self.enc1(c1)
+        c3 = self.enc2(c2)
+        c4 = self.enc3(c3)
+        c5 = self.enc4(c4)
+
+        # decoder 
+        u1 = self.up1(c5)
+        cat1 = torch.cat([u1, c4], dim= 1)
+        uc1 = self.conv1(cat1)  
+
+        u2 = self.up2(uc1)
+        cat2 = torch.cat([u2, c3], dim= 1)
+        uc2 = self.conv2(cat2) 
+
+        u3 = self.up3(uc2)
+        H, W = u3.shape[-2:]
+        c3 = F.upsample_bilinear(c3, (H,W))
+        cat3 = torch.cat([u3, c2, c3], dim= 1)
+        uc3 = self.conv3(cat3) 
+
+        u4 = self.up4(uc3)
+        H, W = u4.shape[-2:]
+        c2 = F.upsample_bilinear(c2, (H,W))
+        cat4 = torch.cat([u4, c1, c2], dim= 1)
+        uc4 = self.conv4(cat4) 
+
+        # return decoder
+        out = self.decode(uc4)
+        
+        return out, None
+
+
+if __name__ == '__main__':
+    x = torch.randn(2, 3, 224, 224)
+    model = LightResUNet(3, 1)
+    model.eval()
+    out, _ = model(x)
+    print(out.shape)

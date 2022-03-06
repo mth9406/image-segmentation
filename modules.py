@@ -29,7 +29,73 @@ class ConvTrans2dBlock(nn.Sequential):
             nn.BatchNorm2d(out_channels),
             nn.ReLU()
         ) 
-                
+
+class DepthwiseSeparableConv2d(nn.Module):
+
+    def __init__(self, in_chans, out_chans, kernel_size, padding, dilation_rate, stride= 1):
+        super().__init__()
+        self.f = nn.Sequential(
+            nn.Conv2d(in_chans, in_chans, kernel_size, stride, 
+                        padding, dilation_rate, groups= in_chans),
+            nn.BatchNorm2d(in_chans),
+            nn.ReLU(),
+            nn.Conv2d(in_chans, out_chans, 1, stride),
+            nn.BatchNorm2d(out_chans),
+            nn.ReLU()
+        )
+        self.mapping = nn.Conv2d(in_chans, out_chans, 1)
+
+    def forward(self, x):
+        fx = self.f(x)
+        x = F.relu(fx+self.mapping(x), inplace=True)
+        return x                
+
+class DoubleConvResidBlock(nn.Module):
+
+    def __init__(self, in_channels, out_channels):
+        super(DoubleConvResidBlock, self).__init__()
+        self.block = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, (3,3), padding= 1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace= True),
+                nn.Conv2d(out_channels, out_channels, (3,3), padding= 1),
+                nn.BatchNorm2d(out_channels)
+        )
+        self.mapping = nn.Conv2d(in_channels, out_channels, (1,1))
+        
+    def forward(self, x):
+        out = self.block(x)
+        out = out + self.mapping(x)
+        out = F.relu(out, inplace= True)
+        return out
+
+class DoubleLightConvResidBlock(nn.Module):
+
+    def __init__(self, in_chans, out_chans, kernel_size, padding, dilation_rate, stride= 1):
+        super(DoubleLightConvResidBlock, self).__init__()
+        self.f = nn.Sequential(
+            nn.Conv2d(in_chans, in_chans, kernel_size, stride, 
+                        padding, dilation_rate, groups= in_chans),
+            nn.BatchNorm2d(in_chans),
+            nn.ReLU(),
+            nn.Conv2d(in_chans, out_chans, 1, stride),
+            nn.BatchNorm2d(out_chans),
+            nn.ReLU(),
+            nn.Conv2d(out_chans, out_chans, kernel_size, stride, 
+                        padding, dilation_rate, groups= out_chans),
+            nn.BatchNorm2d(out_chans),
+            nn.ReLU(),
+            nn.Conv2d(out_chans, out_chans, 1, stride),
+            nn.BatchNorm2d(out_chans),
+            nn.ReLU()            
+        )
+        self.mapping = nn.Conv2d(in_chans, out_chans, (1,1))
+        
+    def forward(self, x):
+        out = self.f(x)
+        out = out + self.mapping(x)
+        out = F.relu(out, inplace= True)
+        return out
 
 class Mlp(nn.Module):
     def __init__(self, in_features:int, 
@@ -60,7 +126,8 @@ class SpatialReductionAttention(nn.Module):
     '''
     def __init__(self, dim, num_heads= 8, 
                  qkv_bias = False, qk_scale= None,
-                 attn_drop= 0., proj_drop= 0., sr_ratio= 1
+                 attn_drop= 0., proj_drop= 0., sr_ratio= 1,
+                 is_DSC= True
                 ):
         super().__init__()
         assert dim % num_heads == 0, \
@@ -81,7 +148,8 @@ class SpatialReductionAttention(nn.Module):
 
         self.sr_ratio = sr_ratio
         if sr_ratio > 1:
-            self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+            self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio) if is_DSC\
+                else DepthwiseSeparableConv2d(dim, dim, sr_ratio, sr_ratio)
             self.norm = nn.LayerNorm(dim)
     
     def forward(self, x, H, W):
@@ -131,7 +199,8 @@ class TransformerEncoderBlock(nn.Module):
                  attn_drop: float = 0., 
                  act_layer = nn.GELU,
                  norm_layer = nn.LayerNorm, 
-                 sr_ratio: int = 1
+                 sr_ratio: int = 1,
+                 is_DSC: bool = True
                 ):
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -142,7 +211,8 @@ class TransformerEncoderBlock(nn.Module):
             qk_scale= qk_scale,
             attn_drop= attn_drop,
             proj_drop= proj_drop,
-            sr_ratio= sr_ratio
+            sr_ratio= sr_ratio,
+            is_DSC= is_DSC
         )
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim*mlp_ratio)
@@ -180,7 +250,7 @@ class PatchEmbed(nn.Module):
                               stride= patch_size)
         self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x):
+    def forward(self, x, return_shape= True):
         B, C, H, W = x.shape
 
         x = self.proj(x).flatten(2).transpose(-1,-2)
@@ -188,8 +258,10 @@ class PatchEmbed(nn.Module):
         # -> B, dim HW//P^2 -> B, HW//P^2 dim
         x = self.norm(x)
         H, W = H//self.patch_size[0], W//self.patch_size[1]
-
-        return x, (H, W)
+        if return_shape:
+            return x, (H, W)
+        else:
+            return x
 
 class PyramidVisionTransformer(nn.Module):
 
@@ -201,6 +273,7 @@ class PyramidVisionTransformer(nn.Module):
                  norm_layer= nn.LayerNorm, 
                  depths= [3, 4, 6, 3],
                  sr_ratios= [8, 4, 2, 1], 
+                 is_DSC= True,
                  num_stages= 4
                 ):
         super().__init__()
@@ -226,7 +299,8 @@ class PyramidVisionTransformer(nn.Module):
                 [TransformerEncoderBlock(
                     embed_dims[i], num_heads[i], mlp_ratio[i],
                     qkv_bias, qk_scale, drop_rate, attn_drop_rate, 
-                    norm_layer= norm_layer, sr_ratio= sr_ratios[i]
+                    norm_layer= norm_layer, sr_ratio= sr_ratios[i],
+                    is_DSC= is_DSC
                 ) for _ in range(depths[i])]
             )
 
@@ -266,27 +340,6 @@ class PyramidVisionTransformer(nn.Module):
             outs.append(x)
         
         return outs
-
-class DepthwiseSeparableConv2d(nn.Module):
-
-    def __init__(self, in_chans, out_chans, kernel_size, padding, dilation_rate):
-        super().__init__()
-        self.f = nn.Sequential(
-            nn.Conv2d(in_chans, in_chans, kernel_size, 1, 
-                        padding, dilation_rate, groups= in_chans),
-            nn.BatchNorm2d(in_chans),
-            nn.ReLU(),
-            nn.Conv2d(in_chans, out_chans, 1, 1),
-            nn.BatchNorm2d(out_chans),
-            nn.ReLU()
-        )
-        self.mapping = nn.Conv2d(in_chans, out_chans, 1)
-
-    def forward(self, x):
-        fx = self.f(x)
-        x = F.relu(fx+self.mapping(x), inplace=True)
-        return x
-
 
 class ASPP(nn.Module):
 
@@ -331,7 +384,17 @@ class ASPP(nn.Module):
 
 
 # if __name__ == '__main__':
-    # x = torch.randn(1,64,14,14)
+#     x = torch.randn(1,256,32,32)
+#     H,W = x.shape[-2:]
+#     patchemb = PatchEmbed(32, 16, 256, 256)
+#     patch = patchemb(x, return_shape= False)
+#     block = TransformerEncoderBlock(256, 8)
+#     encoded = block(patch, H, W)
+
+#     print("patch", patch.shape)
+#     print("encoded", encoded.shape)
+
+
     # aspp = ASPP(emb_size = 64, branch_emb_size= 8)
     # aspp.eval()
     # out = aspp(x)
